@@ -1,9 +1,17 @@
 import functools
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Dict, Hashable, TypeVar, cast
 
 # Configure logging
+# This sets up the Python logging system with the following parameters:
+# - level=logging.INFO: Only messages of level INFO and above will be shown
+#   (DEBUG < INFO < WARNING < ERROR < CRITICAL)
+# - format: Specifies how each log message should be formatted:
+#   %(asctime)s: Timestamp of when the log was created
+#   %(levelname)s: The logging level (INFO, WARNING, etc.)
+#   %(message)s: The actual log message
+# This configuration will be used by all logging calls in the program
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -26,64 +34,60 @@ def log_function(func: Callable) -> Callable:
         return result
     return wrapper
 
-def cache_result(verbose=False):
+# Type variable for the decorated function
+F = TypeVar('F', bound=Callable[..., Any])
+
+def cache_result(func: F) -> F:
     """
-    A decorator that caches function results based on their arguments.
-    If the same arguments are used again, returns the cached result instead of recomputing.
+    Decorator that caches function results based on input arguments.
     
     Args:
-        verbose (bool): If True, prints messages about cache hits and misses
-    
+        func: The function to be decorated
+        
     Returns:
-        decorator: A function that wraps the original function with caching
+        The decorated function that caches results
     """
-    def decorator(func):
-        # Dictionary to store cached results
-        # Keys are function arguments, values are function results
-        cache = {}
+    # Dictionary to store cached results
+    cache: Dict[Hashable, Any] = {}
+    
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        # Create a cache key from function arguments
+        key = (func.__name__, args, tuple(sorted(kwargs.items())))
         
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Create a key from the function arguments
-            # This allows us to cache results for different argument combinations
-            key = str(args) + str(kwargs)
+        # Return cached result if available
+        if key in cache:
+            return cache[key]
             
-            # Check if we have a cached result for these arguments
-            if key in cache:
-                if verbose:
-                    print(f"Cache hit for {func.__name__} with args: {args}, kwargs: {kwargs}")
-                return cache[key]
-            
-            # If no cached result, compute it
-            if verbose:
-                print(f"Cache miss for {func.__name__} with args: {args}, kwargs: {kwargs}")
-            result = func(*args, **kwargs)
-            
-            # Store the result in cache
-            cache[key] = result
-            return result
+        # Compute and cache new result
+        result = func(*args, **kwargs)
+        cache[key] = result
+        return result
         
-        return wrapper
-    return decorator
+    return cast(F, wrapper)
 
 # Example 1: Fibonacci function with caching
 @log_function
 @time_it
-@cache_result(verbose=True)
-def fibonacci(n):
+@cache_result
+def fibonacci(n: int) -> int:
     """
     Calculate the nth Fibonacci number.
-    Without caching, this would be very inefficient for large n.
-    With caching, each value is computed only once.
+    
+    Args:
+        n: The position in the Fibonacci sequence
+        
+    Returns:
+        The nth Fibonacci number
     """
     if n < 2:
         return n
-    return fibonacci(n-1) + fibonacci(n-2)
+    return fibonacci(n - 1) + fibonacci(n - 2)
 
 # Example 2: Power function with caching
 @log_function
 @time_it
-@cache_result(verbose=True)
+@cache_result
 def power(base, exponent):
     """
     Calculate base raised to the power of exponent.
